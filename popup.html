@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>多币种价格监控器</title>
+  <style>
+    body {
+      width: 380px;
+      padding: 20px;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      margin: 0;
+    }
+    
+    .header {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    
+    .header h1 {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 600;
+    }
+    
+    .coin-selector {
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 10px;
+      padding: 15px;
+      margin-bottom: 20px;
+      backdrop-filter: blur(10px);
+    }
+    
+    .coin-buttons {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 15px;
+    }
+    
+    .coin-btn {
+      flex: 1;
+      padding: 10px;
+      border: none;
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.2);
+      color: white;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 600;
+      transition: all 0.3s ease;
+    }
+    
+    .coin-btn:hover {
+      background: rgba(255, 255, 255, 0.3);
+    }
+    
+    .coin-btn.active {
+      background: #4CAF50;
+      box-shadow: 0 2px 8px rgba(76, 175, 80, 0.3);
+    }
+    
+    .price-display {
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 10px;
+      padding: 15px;
+      margin-bottom: 20px;
+      text-align: center;
+      backdrop-filter: blur(10px);
+    }
+    
+    .current-price {
+      font-size: 28px;
+      font-weight: bold;
+      margin-bottom: 8px;
+    }
+    
+    .price-change {
+      font-size: 16px;
+      margin-bottom: 8px;
+    }
+    
+    .volatility-info {
+      font-size: 14px;
+      opacity: 0.8;
+      margin-bottom: 8px;
+    }
+    
+    .last-update {
+      font-size: 12px;
+      opacity: 0.6;
+    }
+    
+    .chart-container {
+      height: 120px;
+      margin: 15px 0;
+      position: relative;
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    
+    .chart-canvas {
+      width: 100%;
+      height: 100%;
+    }
+    
+    .monitoring-controls {
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 10px;
+      padding: 15px;
+      margin-bottom: 20px;
+      backdrop-filter: blur(10px);
+    }
+    
+    .toggle-monitoring {
+      width: 100%;
+      padding: 12px;
+      border: none;
+      border-radius: 8px;
+      background: #2196F3;
+      color: white;
+      cursor: pointer;
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 15px;
+      transition: all 0.3s ease;
+    }
+    
+    .toggle-monitoring:hover {
+      background: #1976D2;
+      transform: translateY(-1px);
+    }
+    
+    .toggle-monitoring.disabled {
+      background: #9E9E9E;
+    }
+    
+    .volatility-settings {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+    
+    .volatility-settings input {
+      flex: 1;
+      padding: 8px;
+      border: none;
+      border-radius: 5px;
+      background: rgba(255, 255, 255, 0.2);
+      color: white;
+      font-size: 14px;
+    }
+    
+    .volatility-settings input::placeholder {
+      color: rgba(255, 255, 255, 0.7);
+    }
+    
+    .volatility-settings button {
+      padding: 8px 12px;
+      border: none;
+      border-radius: 5px;
+      background: #4CAF50;
+      color: white;
+      cursor: pointer;
+      font-size: 12px;
+    }
+    
+    .alerts-section {
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 10px;
+      padding: 15px;
+      margin-bottom: 20px;
+      backdrop-filter: blur(10px);
+    }
+    
+    .alerts-section h3 {
+      margin: 0 0 15px 0;
+      font-size: 16px;
+    }
+    
+    .alert-input {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+    
+    .alert-input input {
+      flex: 1;
+      padding: 8px;
+      border: none;
+      border-radius: 5px;
+      background: rgba(255, 255, 255, 0.2);
+      color: white;
+      font-size: 14px;
+    }
+    
+    .alert-input input::placeholder {
+      color: rgba(255, 255, 255, 0.7);
+    }
+    
+    .alert-input button {
+      padding: 8px 12px;
+      border: none;
+      border-radius: 5px;
+      background: #4CAF50;
+      color: white;
+      cursor: pointer;
+      font-size: 12px;
+    }
+    
+    .alert-list {
+      max-height: 120px;
+      overflow-y: auto;
+    }
+    
+    .alert-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 5px;
+      margin-bottom: 5px;
+    }
+    
+    .alert-item button {
+      background: #f44336;
+      color: white;
+      border: none;
+      border-radius: 3px;
+      padding: 4px 8px;
+      cursor: pointer;
+      font-size: 10px;
+    }
+    
+    .status {
+      text-align: center;
+      margin-top: 15px;
+      font-size: 12px;
+      opacity: 0.8;
+    }
+    
+    .notification-levels {
+      display: flex;
+      gap: 5px;
+      margin-top: 10px;
+      justify-content: center;
+    }
+    
+    .notification-level {
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: bold;
+    }
+    
+    .level-1 { background: #4CAF50; }
+    .level-2 { background: #FF9800; }
+    .level-3 { background: #FF5722; }
+    .level-4 { background: #E91E63; }
+    .level-5 { background: #9C27B0; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <!-- 多币种价格监控器 -->
+    <h1>插件测试</h1>
+  </div>
+  
+  <div class="coin-selector">
+    <div class="coin-buttons">
+      <button class="coin-btn active" data-coin="ETHUSDT">ETH</button>
+      <button class="coin-btn" data-coin="BTCUSDT">BTC</button>
+      <button class="coin-btn" data-coin="SOLUSDT">SOL</button>
+      <button class="coin-btn" data-coin="BCHUSDT">BCH</button>
+    </div>
+  </div>
+  
+  <div class="price-display">
+    <div class="current-price" id="currentPrice">加载中...</div>
+    <!-- <div class="price-change" id="priceChange"></div>
+    <div class="volatility-info" id="volatilityInfo"></div>
+    <div class="last-update" id="lastUpdate"></div> -->
+    
+    <div class="chart-container">
+      <canvas class="chart-canvas" id="priceChart"></canvas>
+    </div>
+  </div>
+  
+  <div class="monitoring-controls">
+    <button id="toggleMonitoring" class="toggle-monitoring">开始监控</button>
+    
+    <div class="volatility-settings">
+      <input type="number" id="volatilityThreshold" placeholder="波动率阈值 (%)" step="0.1" min="0.1" max="5">
+      <button id="setVolatility">设置</button>
+    </div>
+    
+    <div class="notification-levels">
+      <span class="notification-level level-1">0.1%</span>
+      <span class="notification-level level-2">0.2%</span>
+      <span class="notification-level level-3">0.3%</span>
+      <span class="notification-level level-4">0.4%</span>
+      <span class="notification-level level-5">0.5%</span>
+    </div>
+    
+    <div style="font-size: 11px; opacity: 0.7; text-align: center; margin-top: 8px;">
+      设置0.1%时：0.1%触发1星，0.2%触发2星，以此类推
+    </div>
+  </div>
+  
+  <div class="alerts-section">
+    <h3>价格提醒设置</h3>
+    <div class="alert-input">
+      <input type="number" id="alertPrice" placeholder="输入价格" step="0.01">
+      <button id="addAlert">添加</button>
+    </div>
+    <div class="alert-list" id="alertList">
+      <!-- 提醒列表将在这里动态生成 -->
+    </div>
+  </div>
+  
+  <div class="status" id="status">监控状态: 未开始</div>
+  
+  <script src="popup.js"></script>
+</body>
+</html> 

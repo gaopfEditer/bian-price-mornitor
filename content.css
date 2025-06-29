@@ -1,0 +1,83 @@
+/* Content Script 样式 */
+
+/* 悬浮图表容器 */
+#floating-price-chart {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    transition: all 0.3s ease;
+}
+
+#floating-price-chart:hover {
+    transform: scale(1.02);
+    box-shadow: 0 6px 25px rgba(0, 0, 0, 0.4);
+}
+
+/* 标题栏样式 */
+#floating-price-chart .header {
+    cursor: move;
+    user-select: none;
+}
+
+#floating-price-chart .header:hover {
+    background: rgba(255, 255, 255, 0.15);
+}
+
+/* 关闭按钮样式 */
+#floating-price-chart button {
+    transition: all 0.2s ease;
+}
+
+#floating-price-chart button:hover {
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 50%;
+}
+
+/* 画布样式 */
+#floating-chart-canvas {
+    image-rendering: -webkit-optimize-contrast;
+    image-rendering: crisp-edges;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+    #floating-price-chart {
+        width: 250px !important;
+        height: 150px !important;
+        top: 10px !important;
+        right: 10px !important;
+    }
+}
+
+/* 动画效果 */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(-20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+#floating-price-chart {
+    animation: fadeIn 0.3s ease;
+}
+
+/* 滚动条样式 */
+#floating-price-chart::-webkit-scrollbar {
+    width: 6px;
+}
+
+#floating-price-chart::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 3px;
+}
+
+#floating-price-chart::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.3);
+    border-radius: 3px;
+}
+
+#floating-price-chart::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.5);
+} 

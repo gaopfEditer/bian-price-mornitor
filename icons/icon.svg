@@ -1,0 +1,18 @@
+<svg width="128" height="128" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#667eea;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#764ba2;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- 背景圆形 -->
+  <circle cx="64" cy="64" r="60" fill="url(#grad1)" stroke="#fff" stroke-width="2"/>
+  
+  <!-- ETH字母 -->
+  <text x="64" y="75" font-family="Arial, sans-serif" font-size="32" font-weight="bold" text-anchor="middle" fill="white">ETH</text>
+  
+  <!-- 装饰性元素 -->
+  <circle cx="64" cy="64" r="45" fill="none" stroke="rgba(255,255,255,0.3)" stroke-width="1"/>
+  <circle cx="64" cy="64" r="35" fill="none" stroke="rgba(255,255,255,0.2)" stroke-width="1"/>
+</svg> 
