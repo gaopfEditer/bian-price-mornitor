@@ -189,6 +189,8 @@ function fetchPrice() {
                 debugLog('价格更新消息发送成功', 'success');
             }).catch(error => {
                 debugLog(`价格更新消息发送失败: ${error.message}`, 'error');
+                // 如果发送失败，可能是因为popup没有打开，这是正常的
+                // 不需要显示错误状态，因为数据获取是成功的
             });
             
             return currentPrice;

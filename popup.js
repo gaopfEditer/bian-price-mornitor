@@ -17,7 +17,7 @@ document.addEventListener('DOMContentLoaded', function() {
   let selectedCoin = 'ETHUSDT';
   let lastPrice = null;
   let priceHistory = [];
-  let chartContext = null;
+  let chartInstance = null; // ECharts实例
   let volatilityThreshold = 1.0; // 默认1%
   let backgroundPort = null; // 与background的连接
   
@@ -79,88 +79,170 @@ document.addEventListener('DOMContentLoaded', function() {
   
   // 初始化图表
   function initializeChart() {
-    chartContext = priceChartCanvas.getContext('2d');
-    updateChart();
+    // 检查ECharts是否可用
+    if (typeof echarts === 'undefined') {
+      console.error('ECharts未加载');
+      return;
+    }
+    
+    // 初始化ECharts实例
+    chartInstance = echarts.init(priceChartCanvas);
+    
+    // 设置图表配置
+    const option = {
+      backgroundColor: 'transparent',
+      grid: {
+        left: '10%',
+        right: '10%',
+        top: '15%',
+        bottom: '15%',
+        containLabel: true
+      },
+      xAxis: {
+        type: 'category',
+        data: [],
+        axisLine: {
+          lineStyle: {
+            color: 'rgba(255, 255, 255, 0.3)'
+          }
+        },
+        axisLabel: {
+          color: 'rgba(255, 255, 255, 0.8)',
+          fontSize: 10
+        },
+        axisTick: {
+          show: false
+        }
+      },
+      yAxis: {
+        type: 'value',
+        axisLine: {
+          lineStyle: {
+            color: 'rgba(255, 255, 255, 0.3)'
+          }
+        },
+        axisLabel: {
+          color: 'rgba(255, 255, 255, 0.8)',
+          fontSize: 10,
+          formatter: function(value) {
+            return '$' + value.toFixed(0);
+          }
+        },
+        splitLine: {
+          lineStyle: {
+            color: 'rgba(255, 255, 255, 0.1)'
+          }
+        }
+      },
+      tooltip: {
+        trigger: 'axis',
+        backgroundColor: 'rgba(0, 0, 0, 0.8)',
+        borderColor: 'rgba(255, 255, 255, 0.2)',
+        textStyle: {
+          color: '#fff'
+        },
+        formatter: function(params) {
+          if (params && params.length > 0) {
+            const data = params[0];
+            const index = data.dataIndex;
+            if (index >= 0 && index < priceHistory.length) {
+              const point = priceHistory[index];
+              const time = new Date(point.timestamp).toLocaleTimeString();
+              const price = point.price.toFixed(2);
+              return `时间: ${time}<br/>价格: $${price}`;
+            }
+          }
+          return '';
+        }
+      },
+      series: [{
+        name: '价格',
+        type: 'line',
+        data: [],
+        smooth: true,
+        lineStyle: {
+          color: '#4CAF50',
+          width: 2
+        },
+        itemStyle: {
+          color: '#4CAF50'
+        },
+        symbol: 'circle',
+        symbolSize: 4,
+        areaStyle: {
+          color: {
+            type: 'linear',
+            x: 0,
+            y: 0,
+            x2: 0,
+            y2: 1,
+            colorStops: [{
+              offset: 0,
+              color: 'rgba(76, 175, 80, 0.3)'
+            }, {
+              offset: 1,
+              color: 'rgba(76, 175, 80, 0.1)'
+            }]
+          }
+        }
+      }]
+    };
+    
+    chartInstance.setOption(option);
+    
+    // 监听窗口大小变化
+    window.addEventListener('resize', function() {
+      if (chartInstance) {
+        chartInstance.resize();
+      }
+    });
+    
+    console.log('ECharts图表初始化完成');
   }
   
   // 更新图表
   function updateChart() {
     console.log(`更新图表 - 价格历史长度: ${priceHistory.length}`);
     
-    if (!chartContext) {
-      console.log('图表上下文不存在，跳过更新');
+    if (!chartInstance) {
+      console.log('ECharts实例不存在，跳过更新');
       return;
     }
     
-    if (priceHistory.length < 2) {
-      console.log('价格历史数据不足，跳过更新');
-      return;
-    }
+    // 准备数据
+    const chartData = priceHistory.map(point => point.price);
     
-    const canvas = priceChartCanvas;
-    const ctx = chartContext;
-    const width = canvas.width;
-    const height = canvas.height;
-    
-    console.log(`画布尺寸: ${width}x${height}`);
-    
-    // 清空画布
-    ctx.clearRect(0, 0, width, height);
-    
-    // 计算价格范围
-    const prices = priceHistory.map(p => p.price);
-    const minPrice = Math.min(...prices);
-    const maxPrice = Math.max(...prices);
-    const priceRange = maxPrice - minPrice;
-    
-    console.log(`价格范围: ${minPrice} - ${maxPrice}, 范围: ${priceRange}`);
-    
-    if (priceRange === 0) {
-      console.log('价格范围为零，跳过绘制');
-      return;
-    }
-    
-    // 绘制网格
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
-    ctx.lineWidth = 1;
-    for (let i = 0; i <= 4; i++) {
-      const y = (height / 4) * i;
-      ctx.beginPath();
-      ctx.moveTo(0, y);
-      ctx.lineTo(width, y);
-      ctx.stroke();
-    }
-    
-    // 绘制价格线
-    ctx.strokeStyle = '#4CAF50';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    
-    priceHistory.forEach((point, index) => {
-      const x = (index / (priceHistory.length - 1)) * width;
-      const y = height - ((point.price - minPrice) / priceRange) * height;
-      
-      if (index === 0) {
-        ctx.moveTo(x, y);
-      } else {
-        ctx.lineTo(x, y);
-      }
+    // 准备时间轴标签
+    const timeLabels = priceHistory.map(point => {
+      const date = new Date(point.timestamp);
+      return date.toLocaleTimeString('zh-CN', {
+        hour: '2-digit',
+        minute: '2-digit'
+      });
     });
     
-    ctx.stroke();
+    console.log(`图表数据: ${chartData.length}个点`);
+    console.log('时间轴标签:', timeLabels);
+    console.log('图表数据样本:', chartData.slice(-3));
     
-    // 绘制数据点
-    ctx.fillStyle = '#4CAF50';
-    priceHistory.forEach((point, index) => {
-      const x = (index / (priceHistory.length - 1)) * width;
-      const y = height - ((point.price - minPrice) / priceRange) * height;
-      
-      ctx.beginPath();
-      ctx.arc(x, y, 2, 0, 2 * Math.PI);
-      ctx.fill();
-    });
+    // 更新图表配置
+    const option = {
+      xAxis: {
+        data: timeLabels,
+        axisLabel: {
+          show: chartData.length > 1, // 只有多个点时才显示时间轴标签
+          interval: Math.max(0, Math.floor(chartData.length / 5)) // 控制标签密度
+        }
+      },
+      series: [{
+        data: chartData
+      }]
+    };
     
-    console.log('图表绘制完成');
+    // 应用配置
+    chartInstance.setOption(option);
+    
+    console.log('ECharts图表更新完成');
     
     // 发送数据到content script更新悬浮图表
     if (isMonitoring) {
@@ -181,15 +263,21 @@ document.addEventListener('DOMContentLoaded', function() {
   function fetchPrice() {
     console.log(`fetchPrice调用 - 监控状态: ${isMonitoring}, 币种: ${selectedCoin}`);
     
-    // 如果正在监控，仍然可以手动获取一次价格作为初始数据
+    // 如果正在监控，不需要手动获取价格，因为background会自动获取
     if (isMonitoring) {
-      console.log('正在监控中，但仍获取一次价格作为初始数据');
+      console.log('正在监控中，跳过手动获取价格');
+      return Promise.resolve();
     }
     
     console.log('获取价格...');
     
-    fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${selectedCoin}`)
-      .then(response => response.json())
+    return fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${selectedCoin}`)
+      .then(response => {
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        return response.json();
+      })
       .then(data => {
         const price = parseFloat(data.price);
         const now = new Date();
@@ -222,9 +310,25 @@ document.addEventListener('DOMContentLoaded', function() {
           timestamp: now.getTime()
         });
         
+        console.log(`添加新价格点: $${price.toFixed(2)} at ${now.toLocaleTimeString()}`);
+        console.log(`添加前价格历史长度: ${priceHistory.length - 1}`);
+        
         // 保持最近5小时的数据（每分钟一个点，最多300个点）
         const fiveHoursAgo = now.getTime() - (5 * 60 * 60 * 1000);
+        const beforeFilter = priceHistory.length;
         priceHistory = priceHistory.filter(p => p.timestamp > fiveHoursAgo);
+        const afterFilter = priceHistory.length;
+        
+        console.log(`时间戳过滤: ${beforeFilter} -> ${afterFilter} (5小时前: ${new Date(fiveHoursAgo).toLocaleTimeString()})`);
+        console.log(`过滤后价格历史长度: ${priceHistory.length}`);
+        
+        // 显示最近几个价格点的时间戳
+        if (priceHistory.length > 0) {
+          console.log('最近的价格点:');
+          priceHistory.slice(-3).forEach((point, index) => {
+            console.log(`  ${index + 1}. $${point.price.toFixed(2)} at ${new Date(point.timestamp).toLocaleTimeString()}`);
+          });
+        }
         
         // 更新图表
         updateChart();
@@ -243,7 +347,11 @@ document.addEventListener('DOMContentLoaded', function() {
       .catch(error => {
         console.error('获取价格失败:', error);
         currentPriceEl.textContent = '获取失败';
-        statusEl.textContent = '监控状态: 连接错误';
+        
+        // 如果正在监控，不要显示错误状态，因为background可能还在正常工作
+        if (!isMonitoring) {
+          statusEl.textContent = '监控状态: 连接错误';
+        }
       });
   }
   
@@ -512,7 +620,8 @@ document.addEventListener('DOMContentLoaded', function() {
       // 只处理当前选中币种的价格更新
       if (request.coin === selectedCoin) {
         const price = parseFloat(request.price);
-        const now = new Date();
+        const timestamp = request.timestamp ? new Date(request.timestamp).getTime() : Date.now();
+        const now = new Date(timestamp);
         
         console.log(`更新价格显示: ${selectedCoin} = $${price.toFixed(2)}`);
         
@@ -540,14 +649,28 @@ document.addEventListener('DOMContentLoaded', function() {
         // 添加到价格历史
         priceHistory.push({
           price: price,
-          timestamp: now.getTime()
+          timestamp: timestamp
         });
+        
+        console.log(`添加新价格点: $${price.toFixed(2)} at ${now.toLocaleTimeString()}`);
+        console.log(`添加前价格历史长度: ${priceHistory.length - 1}`);
         
         // 保持最近5小时的数据（每分钟一个点，最多300个点）
         const fiveHoursAgo = now.getTime() - (5 * 60 * 60 * 1000);
+        const beforeFilter = priceHistory.length;
         priceHistory = priceHistory.filter(p => p.timestamp > fiveHoursAgo);
+        const afterFilter = priceHistory.length;
         
-        console.log(`价格历史长度: ${priceHistory.length}`);
+        console.log(`时间戳过滤: ${beforeFilter} -> ${afterFilter} (5小时前: ${new Date(fiveHoursAgo).toLocaleTimeString()})`);
+        console.log(`过滤后价格历史长度: ${priceHistory.length}`);
+        
+        // 显示最近几个价格点的时间戳
+        if (priceHistory.length > 0) {
+          console.log('最近的价格点:');
+          priceHistory.slice(-3).forEach((point, index) => {
+            console.log(`  ${index + 1}. $${point.price.toFixed(2)} at ${new Date(point.timestamp).toLocaleTimeString()}`);
+          });
+        }
         
         // 更新图表
         updateChart();
@@ -578,6 +701,10 @@ document.addEventListener('DOMContentLoaded', function() {
       currentPriceEl.textContent = '获取失败';
       statusEl.textContent = '监控状态: 连接错误';
       sendResponse({status: 'error', message: request.error});
+    } else if (request.action === 'debugLog') {
+      // 处理调试日志
+      console.log(`[DEBUG] ${request.message}`);
+      sendResponse({status: 'success'});
     } else {
       console.log('未知消息类型:', request.action);
       sendResponse({status: 'unknown', message: '未知消息类型'});
@@ -608,15 +735,28 @@ document.addEventListener('DOMContentLoaded', function() {
           currentPriceEl.textContent = `$${price.toFixed(2)}`;
           lastPrice = price;
           
-          // 如果正在监控，立即获取一次最新价格
+          // 添加到价格历史（如果为空）
+          if (priceHistory.length === 0) {
+            const now = new Date();
+            priceHistory.push({
+              price: price,
+              timestamp: now.getTime()
+            });
+            console.log(`添加缓存价格到历史: $${price.toFixed(2)} at ${now.toLocaleTimeString()}`);
+            updateChart();
+          }
+          
+          // 如果正在监控，等待background发送最新价格
           if (isMonitoring) {
-            console.log('正在监控中，立即获取最新价格');
+            console.log('正在监控中，等待background发送最新价格');
+          } else {
+            // 如果不在监控中，获取一次价格作为初始显示
+            console.log('不在监控中，获取一次价格作为初始显示');
             fetchPrice();
           }
         } else if (isMonitoring) {
-          // 如果正在监控但没有缓存价格，立即获取
-          console.log('正在监控中但没有缓存价格，立即获取');
-          fetchPrice();
+          // 如果正在监控但没有缓存价格，等待background发送
+          console.log('正在监控中但没有缓存价格，等待background发送');
         } else {
           // 如果不在监控中，也获取一次价格作为初始显示
           console.log('不在监控中，获取一次价格作为初始显示');
@@ -635,7 +775,6 @@ document.addEventListener('DOMContentLoaded', function() {
   
   // 初始获取价格
   console.log('开始初始化...');
-  fetchPrice();
   
   // 初始化数据
   initializeData();
