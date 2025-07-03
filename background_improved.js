@@ -258,7 +258,7 @@ function fetchPrice() {
         chrome.runtime.sendMessage(message).then(() => {
             debugLog('价格更新消息发送成功', 'success');
         }).catch(error => {
-            debugLog(`价格更新消息发送失败: ${error.message}`, 'error');
+            debugLog(`价格更新消息发送失败1: ${error.message}`, 'error');
         });
         
         return currentPrice;

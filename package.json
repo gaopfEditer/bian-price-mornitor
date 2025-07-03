@@ -1,0 +1,36 @@
+{
+  "name": "eth-price-fetch-extension",
+  "version": "1.0.0",
+  "description": "以太坊价格监控扩展，支持MySQL存储和WebSocket实时推送",
+  "main": "database_service.js",
+  "scripts": {
+    "start": "node api_server.js",
+    "dev": "nodemon api_server.js",
+    "db-service": "node database_service.js",
+    "monitor": "node continuous_monitor.js",
+    "install-deps": "npm install"
+  },
+  "dependencies": {
+    "mysql2": "^3.6.5",
+    "ws": "^8.14.2",
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "socket.io-client": "^4.7.4"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  },
+  "keywords": [
+    "ethereum",
+    "price",
+    "monitor",
+    "mysql",
+    "websocket",
+    "chrome-extension"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "engines": {
+    "node": ">=14.0.0"
+  }
+} 

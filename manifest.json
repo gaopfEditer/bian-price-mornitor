@@ -10,14 +10,15 @@
     "activeTab"
   ],
   "host_permissions": [
-    "https://api.binance.com/*"
+    "https://api.binance.com/*",
+    "http://1.94.137.69:7001/*"
   ],
   "action": {
     "default_popup": "popup.html",
     "default_title": "多币种价格监控器"
   },
   "background": {
-    "service_worker": "background.js"
+    "service_worker": "background_with_db.js"
   },
   "content_scripts": [
     {

@@ -350,7 +350,7 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // 如果正在监控，不要显示错误状态，因为background可能还在正常工作
         if (!isMonitoring) {
-          statusEl.textContent = '监控状态: 连接错误';
+        statusEl.textContent = '监控状态: 连接错误';
         }
       });
   }

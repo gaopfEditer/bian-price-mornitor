@@ -1,10 +1,11 @@
-// 后台服务脚本
+// 后台服务脚本 - 直接WebSocket推送
 let monitoringInterval = null;
 let lastPrices = {};
 let debugMode = false;
 let currentCoin = 'ETHUSDT';
 let volatilityData = {};
 let popupConnected = false; // 跟踪popup连接状态
+let wsUrl = 'ws://1.94.137.69:7001'; // WebSocket服务地址
 
 // 调试日志函数
 function debugLog(message, type = 'info') {
@@ -27,8 +28,39 @@ function debugLog(message, type = 'info') {
 // 初始化
 chrome.runtime.onInstalled.addListener(function() {
     debugLog('多币种价格监控器已安装', 'success');
+    debugLog('后台将通过HTTP API发送价格数据到Socket.IO服务器', 'info');
     // 不自动启动监控，等待用户手动启动
 });
+
+// 使用HTTP API推送消息到Socket.IO服务器
+async function pushPriceToWebSocket(symbol, price, timestamp) {
+    try {
+        const response = await fetch('http://1.94.137.69:7001/api/send-price', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                type: 'price_update',
+                symbol: symbol,
+                price: price,
+                timestamp: timestamp,
+                source: 'chrome_extension'
+            })
+        });
+        
+        if (response.ok) {
+            debugLog(`价格数据推送成功: ${symbol} - $${price}`, 'success');
+            return true;
+        } else {
+            debugLog(`价格数据推送失败: HTTP ${response.status}`, 'warning');
+            return false;
+        }
+    } catch (error) {
+        debugLog(`价格数据推送失败: ${error.message}`, 'warning');
+        return false;
+    }
+}
 
 // 监听popup连接状态
 chrome.runtime.onConnect.addListener(function(port) {
@@ -77,6 +109,7 @@ chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
     } else if (request.action === 'volatilityAlert') {
         // 处理波动率提醒
         handleVolatilityAlert(request);
+
     } else if (request.action === 'debug') {
         // 调试消息处理
         debugMode = true;
@@ -90,7 +123,8 @@ chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
                 lastPrices: lastPrices,
                 volatilityData: volatilityData,
                 debugMode: debugMode,
-                popupConnected: popupConnected
+                popupConnected: popupConnected,
+                wsUrl: wsUrl
             }
         });
     } else if (request.action === 'getStatus') {
@@ -104,6 +138,7 @@ chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
                 volatilityData: volatilityData,
                 debugMode: debugMode,
                 popupConnected: popupConnected,
+                wsUrl: wsUrl,
                 timestamp: new Date().toISOString()
             }
         });
@@ -112,18 +147,21 @@ chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
     return true; // 保持消息通道开放
 });
 
+
+
 // 启动监控
 function startMonitoring() {
     debugLog(`启动价格监控，币种: ${currentCoin}`, 'info');
+    debugLog('后台将持续运行，每5秒获取价格并推送到WebSocket', 'info');
     
     if (monitoringInterval) {
         clearInterval(monitoringInterval);
         debugLog('清除旧的监控定时器', 'info');
     }
     
-    // 立即获取一次价格并发送到popup
+    // 立即获取一次价格
     fetchPrice().then(() => {
-        debugLog('初始价格已发送到popup', 'success');
+        debugLog('初始价格获取完成', 'success');
     }).catch(error => {
         debugLog(`初始价格获取失败: ${error.message}`, 'error');
     });
@@ -132,9 +170,9 @@ function startMonitoring() {
     monitoringInterval = setInterval(() => {
         debugLog('定时获取价格', 'info');
         fetchPrice();
-    }, 20000);
+    }, 5000);
     
-    debugLog('监控定时器已设置，间隔5秒', 'success');
+    debugLog('监控定时器已设置，间隔5秒，后台将持续运行', 'success');
 }
 
 // 停止监控
@@ -166,6 +204,8 @@ function fetchPrice() {
         })
         .then(data => {
             const currentPrice = parseFloat(data.price);
+            const timestamp = new Date().toISOString();
+            
             debugLog(`获取到价格: $${currentPrice}`, 'success');
             
             // 更新最后价格
@@ -174,23 +214,25 @@ function fetchPrice() {
             // 更新badge显示价格
             updateBadge(currentPrice);
             
-            // 发送价格更新到popup - 使用更可靠的方式
+            // 立即推送数据到WebSocket
+            pushPriceToWebSocket(currentCoin, currentPrice, timestamp);
+            
+            // 发送价格更新到popup（可选，不影响WebSocket）
             const message = {
                 action: 'updatePrice',
                 price: currentPrice.toFixed(2),
                 coin: currentCoin,
-                timestamp: new Date().toISOString()
+                timestamp: timestamp
             };
             
-            debugLog(`发送价格更新消息: ${JSON.stringify(message)}`, 'info');
+            debugLog(`准备发送价格更新消息到popup: ${JSON.stringify(message)}`, 'info');
             
-            // 尝试发送到所有可能的popup
+            // 尝试发送到popup，但不影响主流程
             chrome.runtime.sendMessage(message).then(() => {
-                debugLog('价格更新消息发送成功', 'success');
+                debugLog('价格更新消息发送到popup成功', 'success');
             }).catch(error => {
-                debugLog(`价格更新消息发送失败2: ${error.message}`, 'error');
-                // 如果发送失败，可能是因为popup没有打开，这是正常的
-                // 不需要显示错误状态，因为数据获取是成功的
+                // 这是正常的，因为popup可能没有打开
+                debugLog(`价格更新消息发送到popup失败（正常）: ${error.message}`, 'info');
             });
             
             return currentPrice;
@@ -199,7 +241,7 @@ function fetchPrice() {
             debugLog(`获取价格失败: ${error.message}`, 'error');
             updateBadge('Error');
             
-            // 发送错误信息到popup
+            // 发送错误信息到popup（可选）
             const errorMessage = {
                 action: 'priceError',
                 error: error.message,
@@ -208,7 +250,8 @@ function fetchPrice() {
             };
             
             chrome.runtime.sendMessage(errorMessage).catch(() => {
-                // 忽略发送失败的错误
+                // 忽略发送失败的错误，这是正常的
+                debugLog('错误信息发送到popup失败（正常）', 'info');
             });
             
             throw error;
@@ -230,15 +273,6 @@ function handleVolatilityAlert(request) {
         priority: level // 使用级别作为优先级
     };
     
-    // 根据级别设置不同的图标颜色
-    const levelColors = {
-        1: '#4CAF50', // 绿色
-        2: '#FF9800', // 橙色
-        3: '#FF5722', // 红色
-        4: '#E91E63', // 粉色
-        5: '#9C27B0'  // 紫色
-    };
-    
     // 创建通知
     chrome.notifications.create({
         ...notificationConfig,
@@ -252,7 +286,7 @@ function handleVolatilityAlert(request) {
         }
     });
     
-    // 发送到popup显示
+    // 发送到popup显示（可选）
     chrome.runtime.sendMessage({
         action: 'volatilityAlert',
         title: notificationConfig.title,
@@ -263,76 +297,8 @@ function handleVolatilityAlert(request) {
         threshold: threshold,
         multiplier: multiplier
     }).catch(() => {
-        // 忽略发送失败的错误
-    });
-}
-
-// 检查价格提醒
-function checkPriceAlerts(currentPrice) {
-    debugLog(`检查价格提醒，当前价格: $${currentPrice}`, 'info');
-    
-    chrome.storage.local.get(['priceAlerts'], function(result) {
-        const alerts = result.priceAlerts || [];
-        debugLog(`找到 ${alerts.length} 个价格提醒`, 'info');
-        
-        let triggeredAlerts = [];
-        
-        alerts.forEach((alert, index) => {
-            const alertPrice = parseFloat(alert.price);
-            debugLog(`检查提醒 ${index + 1}: ${alert.type} $${alertPrice}`, 'info');
-            
-            // 检查是否达到提醒条件
-            if (alert.type === 'above' && currentPrice >= alertPrice) {
-                debugLog(`触发提醒: 价格 ${currentPrice} >= ${alertPrice}`, 'success');
-                triggeredAlerts.push({
-                    index: index,
-                    alert: alert,
-                    message: `${currentCoin}价格已达到 $${alertPrice}，当前价格: $${currentPrice.toFixed(2)}`
-                });
-            } else if (alert.type === 'below' && currentPrice <= alertPrice) {
-                debugLog(`触发提醒: 价格 ${currentPrice} <= ${alertPrice}`, 'success');
-                triggeredAlerts.push({
-                    index: index,
-                    alert: alert,
-                    message: `${currentCoin}价格已降至 $${alertPrice}，当前价格: $${currentPrice.toFixed(2)}`
-                });
-            }
-        });
-        
-        // 显示通知并移除已触发的提醒
-        triggeredAlerts.forEach(triggered => {
-            debugLog(`发送通知: ${triggered.message}`, 'info');
-            showNotification(triggered.message);
-        });
-        
-        // 从后往前删除，避免索引变化
-        triggeredAlerts.reverse().forEach(triggered => {
-            alerts.splice(triggered.index, 1);
-            debugLog(`移除已触发的提醒: ${triggered.alert.type} $${triggered.alert.price}`, 'info');
-        });
-        
-        // 保存更新后的提醒列表
-        chrome.storage.local.set({priceAlerts: alerts}, () => {
-            debugLog(`保存更新后的提醒列表，剩余 ${alerts.length} 个提醒`, 'info');
-        });
-    });
-}
-
-// 显示通知
-function showNotification(message) {
-    debugLog(`创建通知: ${message}`, 'info');
-    
-    chrome.notifications.create({
-        type: 'basic',
-        iconUrl: 'icons/icon48.png',
-        title: '价格提醒',
-        message: message
-    }, (notificationId) => {
-        if (chrome.runtime.lastError) {
-            debugLog(`通知创建失败: ${chrome.runtime.lastError.message}`, 'error');
-        } else {
-            debugLog(`通知创建成功，ID: ${notificationId}`, 'success');
-        }
+        // 忽略发送失败的错误，这是正常的
+        debugLog('波动率提醒发送到popup失败（正常）', 'info');
     });
 }
 
@@ -354,7 +320,6 @@ function updateBadge(price) {
 // 处理通知点击
 chrome.notifications.onClicked.addListener(function(notificationId) {
     debugLog(`通知被点击: ${notificationId}`, 'info');
-    // 可以在这里添加点击通知后的行为
 });
 
 // 处理通知关闭
@@ -367,6 +332,36 @@ chrome.runtime.onSuspend.addListener(function() {
     debugLog('扩展即将挂起，清理资源', 'warning');
     stopMonitoring();
 });
+
+// 发送心跳消息
+async function sendHeartbeat() {
+    try {
+        const response = await fetch('http://1.94.137.69:7001/api/send-message', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                type: 'heartbeat',
+                source: 'chrome_extension',
+                timestamp: new Date().toISOString()
+            })
+        });
+        
+        if (response.ok) {
+            debugLog('心跳消息发送成功', 'success');
+        } else {
+            debugLog(`心跳消息发送失败: HTTP ${response.status}`, 'warning');
+        }
+    } catch (error) {
+        debugLog(`心跳消息发送失败: ${error.message}`, 'warning');
+    }
+}
+
+// 定期发送心跳消息到WebSocket（确保连接不断）
+setInterval(() => {
+    sendHeartbeat();
+}, 30000); // 每30秒发送心跳
 
 // 定期清理日志（防止内存泄漏）
 setInterval(() => {
