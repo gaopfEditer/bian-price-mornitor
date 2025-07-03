@@ -11,7 +11,8 @@
   ],
   "host_permissions": [
     "https://api.binance.com/*",
-    "http://1.94.137.69:7001/*"
+    "http://1.94.137.69:7001/*",
+    "ws://1.94.137.69:7001/*"
   ],
   "action": {
     "default_popup": "popup.html",

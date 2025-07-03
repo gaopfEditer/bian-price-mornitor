@@ -1,11 +1,19 @@
-// 后台服务脚本 - 直接WebSocket推送
+// 后台服务脚本 - 双模式支持
 let monitoringInterval = null;
 let lastPrices = {};
 let debugMode = false;
 let currentCoin = 'ETHUSDT';
 let volatilityData = {};
 let popupConnected = false; // 跟踪popup连接状态
-let wsUrl = 'ws://1.94.137.69:7001'; // WebSocket服务地址
+let host = '1.94.137.69';//'1.94.137.69';
+let wsUrl = `ws://${host}:7001`; // WebSocket服务地址
+
+// 模式管理
+let currentMode = 'data'; // 'data' 或 'view'
+let wsConnection = null; // WebSocket连接（视图模式使用）
+let wsReconnectAttempts = 0;
+const maxReconnectAttempts = 10;
+let isViewModeActive = false; // 视图模式是否激活
 
 // 调试日志函数
 function debugLog(message, type = 'info') {
@@ -25,17 +33,137 @@ function debugLog(message, type = 'info') {
     }
 }
 
+// WebSocket连接管理（视图模式）
+function initWebSocket() {
+    if (currentMode !== 'view' || !isViewModeActive) {
+        return;
+    }
+    
+    try {
+        debugLog('正在连接WebSocket服务器（视图模式）...', 'info');
+        wsConnection = new WebSocket(wsUrl);
+        
+        wsConnection.onopen = function() {
+            debugLog('WebSocket连接成功（视图模式）', 'success');
+            wsReconnectAttempts = 0;
+        };
+        
+        wsConnection.onmessage = function(event) {
+            try {
+                const data = JSON.parse(event.data);
+                debugLog(`收到WebSocket消息: ${JSON.stringify(data)}`, 'info');
+                
+                // 处理价格更新消息
+                if (data.type === 'price_update') {
+                    handlePriceUpdate(data);
+                }
+            } catch (error) {
+                debugLog(`收到WebSocket消息: ${event.data}`, 'info');
+            }
+        };
+        
+        wsConnection.onclose = function(event) {
+            debugLog(`WebSocket连接已关闭: ${event.code} - ${event.reason}`, 'warning');
+            wsConnection = null;
+            // 自动重连（只有在视图模式激活时才重连）
+            if (currentMode === 'view' && isViewModeActive && wsReconnectAttempts < maxReconnectAttempts) {
+                wsReconnectAttempts++;
+                debugLog(`WebSocket重连尝试 ${wsReconnectAttempts}/${maxReconnectAttempts}`, 'info');
+                setTimeout(initWebSocket, 3000);
+            } else {
+                debugLog('WebSocket重连次数已达上限或视图模式已停止', 'info');
+            }
+        };
+        
+        wsConnection.onerror = function(error) {
+            debugLog(`WebSocket连接错误: ${error.message}`, 'error');
+        };
+        
+    } catch (error) {
+        debugLog(`WebSocket初始化失败: ${error.message}`, 'error');
+    }
+}
+
+// 处理价格更新消息（视图模式）
+function handlePriceUpdate(data) {
+    const { symbol, price, timestamp } = data;
+    
+    // 更新最后价格
+    lastPrices[symbol] = parseFloat(price);
+    
+    // 更新badge显示价格
+    updateBadge(parseFloat(price));
+    
+    // 发送价格更新到popup
+    const message = {
+        action: 'updatePrice',
+        price: parseFloat(price).toFixed(2),
+        coin: symbol,
+        timestamp: timestamp,
+        source: 'websocket'
+    };
+    
+    chrome.runtime.sendMessage(message).then(() => {
+        debugLog('价格更新消息发送到popup成功', 'success');
+    }).catch(error => {
+        debugLog(`价格更新消息发送到popup失败（正常）: ${error.message}`, 'info');
+    });
+}
+
+// 关闭WebSocket连接
+function closeWebSocket() {
+    if (wsConnection) {
+        wsConnection.close();
+        wsConnection = null;
+        debugLog('WebSocket连接已关闭', 'info');
+    }
+    isViewModeActive = false;
+    wsReconnectAttempts = 0;
+}
+
+// 启动视图模式
+function startViewMode() {
+    if (currentMode !== 'view') {
+        debugLog('当前不是视图模式，无法启动视图模式', 'warning');
+        return false;
+    }
+    
+    if (isViewModeActive) {
+        debugLog('视图模式已在运行中', 'info');
+        return true;
+    }
+    
+    debugLog('启动视图模式，开始监听WebSocket数据', 'info');
+    isViewModeActive = true;
+    initWebSocket();
+    return true;
+}
+
+// 停止视图模式
+function stopViewMode() {
+    if (!isViewModeActive) {
+        debugLog('视图模式未在运行', 'info');
+        return true;
+    }
+    
+    debugLog('停止视图模式，关闭WebSocket连接', 'info');
+    closeWebSocket();
+    return true;
+}
+
 // 初始化
 chrome.runtime.onInstalled.addListener(function() {
     debugLog('多币种价格监控器已安装', 'success');
-    debugLog('后台将通过HTTP API发送价格数据到Socket.IO服务器', 'info');
+    debugLog('支持数据模式和视图模式', 'info');
+    debugLog('数据模式：获取价格并推送到服务器', 'info');
+    debugLog('视图模式：接收WebSocket消息显示数据', 'info');
     // 不自动启动监控，等待用户手动启动
 });
 
 // 使用HTTP API推送消息到Socket.IO服务器
 async function pushPriceToWebSocket(symbol, price, timestamp) {
     try {
-        const response = await fetch('http://1.94.137.69:7001/api/send-price', {
+        const response = await fetch(`http://${host}:7001/api/send-price`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -43,7 +171,7 @@ async function pushPriceToWebSocket(symbol, price, timestamp) {
             body: JSON.stringify({
                 type: 'price_update',
                 symbol: symbol,
-                price: price,
+                price: price.toString(),
                 timestamp: timestamp,
                 source: 'chrome_extension'
             })
@@ -78,12 +206,30 @@ chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
     debugLog(`收到消息: ${JSON.stringify(request)}`, 'info');
     
     if (request.action === 'startMonitoring') {
-        currentCoin = request.coin || 'ETHUSDT';
-        startMonitoring();
-        sendResponse({status: 'success', message: '监控已启动', coin: currentCoin});
+        if (currentMode === 'data') {
+            currentCoin = request.coin || 'ETHUSDT';
+            startMonitoring();
+            sendResponse({status: 'success', message: '数据模式监控已启动', coin: currentCoin});
+        } else if (currentMode === 'view') {
+            const success = startViewMode();
+            if (success) {
+                sendResponse({status: 'success', message: '视图模式监听已启动'});
+            } else {
+                sendResponse({status: 'error', message: '视图模式启动失败'});
+            }
+        }
     } else if (request.action === 'stopMonitoring') {
-        stopMonitoring();
-        sendResponse({status: 'success', message: '监控已停止'});
+        if (currentMode === 'data') {
+            stopMonitoring();
+            sendResponse({status: 'success', message: '数据模式监控已停止'});
+        } else if (currentMode === 'view') {
+            const success = stopViewMode();
+            if (success) {
+                sendResponse({status: 'success', message: '视图模式监听已停止'});
+            } else {
+                sendResponse({status: 'error', message: '视图模式停止失败'});
+            }
+        }
     } else if (request.action === 'switchCoin') {
         // 处理币种切换
         const newCoin = request.coin;
@@ -98,6 +244,22 @@ chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
         }
         
         sendResponse({status: 'success', message: '币种已切换', coin: currentCoin});
+    } else if (request.action === 'switchMode') {
+        // 切换模式
+        const newMode = request.mode;
+        debugLog(`切换模式: ${currentMode} -> ${newMode}`, 'info');
+        
+        // 停止当前模式
+        if (currentMode === 'data' && monitoringInterval) {
+            stopMonitoring();
+        } else if (currentMode === 'view' && isViewModeActive) {
+            stopViewMode();
+        }
+        
+        // 切换到新模式
+        currentMode = newMode;
+        
+        sendResponse({status: 'success', message: `已切换到${newMode === 'data' ? '数据' : '视图'}模式`, mode: currentMode});
     } else if (request.action === 'updateVolatility') {
         // 更新波动率数据
         volatilityData[request.coin] = {
@@ -109,7 +271,6 @@ chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
     } else if (request.action === 'volatilityAlert') {
         // 处理波动率提醒
         handleVolatilityAlert(request);
-
     } else if (request.action === 'debug') {
         // 调试消息处理
         debugMode = true;
@@ -124,7 +285,10 @@ chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
                 volatilityData: volatilityData,
                 debugMode: debugMode,
                 popupConnected: popupConnected,
-                wsUrl: wsUrl
+                wsUrl: wsUrl,
+                currentMode: currentMode,
+                wsConnected: !!wsConnection,
+                isViewModeActive: isViewModeActive
             }
         });
     } else if (request.action === 'getStatus') {
@@ -139,6 +303,9 @@ chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
                 debugMode: debugMode,
                 popupConnected: popupConnected,
                 wsUrl: wsUrl,
+                currentMode: currentMode,
+                wsConnected: !!wsConnection,
+                isViewModeActive: isViewModeActive,
                 timestamp: new Date().toISOString()
             }
         });
@@ -151,8 +318,13 @@ chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
 
 // 启动监控
 function startMonitoring() {
+    if (currentMode !== 'data') {
+        debugLog('当前不是数据模式，无法启动监控', 'warning');
+        return;
+    }
+    
     debugLog(`启动价格监控，币种: ${currentCoin}`, 'info');
-    debugLog('后台将持续运行，每5秒获取价格并推送到WebSocket', 'info');
+    debugLog('后台将持续运行，每15秒获取价格并推送到服务器', 'info');
     
     if (monitoringInterval) {
         clearInterval(monitoringInterval);
@@ -166,13 +338,13 @@ function startMonitoring() {
         debugLog(`初始价格获取失败: ${error.message}`, 'error');
     });
     
-    // 每5秒获取一次价格
+    // 每15秒获取一次价格
     monitoringInterval = setInterval(() => {
         debugLog('定时获取价格', 'info');
         fetchPrice();
-    }, 5000);
+    }, 15000);
     
-    debugLog('监控定时器已设置，间隔5秒，后台将持续运行', 'success');
+    debugLog('监控定时器已设置，间隔15秒，后台将持续运行', 'success');
 }
 
 // 停止监控
@@ -336,13 +508,15 @@ chrome.runtime.onSuspend.addListener(function() {
 // 发送心跳消息
 async function sendHeartbeat() {
     try {
-        const response = await fetch('http://1.94.137.69:7001/api/send-message', {
+        const response = await fetch(`http://${host}:7001/api/send-price`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
                 type: 'heartbeat',
+                symbol: 'HEARTBEAT',
+                price: '0',
                 source: 'chrome_extension',
                 timestamp: new Date().toISOString()
             })

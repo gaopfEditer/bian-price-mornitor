@@ -260,6 +260,36 @@
     .level-3 { background: #FF5722; }
     .level-4 { background: #E91E63; }
     .level-5 { background: #9C27B0; }
+    
+    .mode-selector {
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 10px;
+      padding: 15px;
+      margin-bottom: 20px;
+      backdrop-filter: blur(10px);
+    }
+    
+    .mode-btn {
+      flex: 1;
+      padding: 10px;
+      border: none;
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.2);
+      color: white;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 600;
+      transition: all 0.3s ease;
+    }
+    
+    .mode-btn:hover {
+      background: rgba(255, 255, 255, 0.3);
+    }
+    
+    .mode-btn.active {
+      background: #2196F3;
+      box-shadow: 0 2px 8px rgba(33, 150, 243, 0.3);
+    }
   </style>
 </head>
 <body>
@@ -285,6 +315,17 @@
     
     <div class="chart-container">
       <canvas class="chart-canvas" id="priceChart"></canvas>
+    </div>
+  </div>
+  
+  <div class="mode-selector">
+    <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+      <button id="dataMode" class="mode-btn active" data-mode="data">数据模式</button>
+      <button id="viewMode" class="mode-btn" data-mode="view">视图模式</button>
+    </div>
+    <div style="font-size: 11px; opacity: 0.7; text-align: center; margin-bottom: 15px;">
+      数据模式：获取价格并推送到服务器<br>
+      视图模式：接收WebSocket消息显示数据
     </div>
   </div>
   

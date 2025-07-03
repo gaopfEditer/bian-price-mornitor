@@ -20,6 +20,8 @@ document.addEventListener('DOMContentLoaded', function() {
   let chartInstance = null; // ECharts实例
   let volatilityThreshold = 1.0; // 默认1%
   let backgroundPort = null; // 与background的连接
+  let currentMode = 'data'; // 当前模式：'data' 或 'view'
+  let isViewModeActive = false; // 视图模式是否激活
   
   // 初始化
   loadAlerts();
@@ -27,7 +29,80 @@ document.addEventListener('DOMContentLoaded', function() {
   updateMonitoringStatus();
   initializeChart();
   setupCoinSelector();
+  setupModeSelector();
   connectToBackground();
+  
+  // 设置模式选择器
+  function setupModeSelector() {
+    const dataModeBtn = document.getElementById('dataMode');
+    const viewModeBtn = document.getElementById('viewMode');
+    
+    dataModeBtn.addEventListener('click', function() {
+      switchMode('data');
+    });
+    
+    viewModeBtn.addEventListener('click', function() {
+      switchMode('view');
+    });
+  }
+  
+  // 切换模式
+  function switchMode(mode) {
+    if (currentMode === mode) {
+      return;
+    }
+    
+    console.log(`切换模式: ${currentMode} -> ${mode}`);
+    
+    // 更新按钮状态
+    document.getElementById('dataMode').classList.toggle('active', mode === 'data');
+    document.getElementById('viewMode').classList.toggle('active', mode === 'view');
+    
+    // 停止当前监控
+    if (isMonitoring) {
+      toggleMonitoring();
+    }
+    
+    // 发送模式切换消息到后台
+    chrome.runtime.sendMessage({
+      action: 'switchMode',
+      mode: mode
+    }).then(response => {
+      if (response && response.status === 'success') {
+        currentMode = mode;
+        isViewModeActive = false; // 切换模式时重置视图模式状态
+        updateStatus(`已切换到${mode === 'data' ? '数据' : '视图'}模式`);
+        
+        // 更新监控按钮状态
+        updateMonitoringButton();
+        updateMonitoringStatus();
+      }
+    }).catch(error => {
+      console.error('模式切换失败:', error);
+      updateStatus('模式切换失败');
+    });
+  }
+  
+  // 更新监控按钮状态
+  function updateMonitoringButton() {
+    const toggleBtn = document.getElementById('toggleMonitoring');
+    
+    if (currentMode === 'view') {
+      if (isViewModeActive) {
+        toggleBtn.textContent = '停止监听';
+        toggleBtn.disabled = false;
+        toggleBtn.classList.remove('disabled');
+      } else {
+        toggleBtn.textContent = '开始监听';
+        toggleBtn.disabled = false;
+        toggleBtn.classList.remove('disabled');
+      }
+    } else {
+      toggleBtn.textContent = isMonitoring ? '停止监控' : '开始监控';
+      toggleBtn.disabled = false;
+      toggleBtn.classList.remove('disabled');
+    }
+  }
   
   // 设置币种选择器
   function setupCoinSelector() {
@@ -545,68 +620,118 @@ document.addEventListener('DOMContentLoaded', function() {
   
   // 切换监控状态
   toggleBtn.addEventListener('click', function() {
-    isMonitoring = !isMonitoring;
-    updateMonitoringStatus();
-    
-    if (isMonitoring) {
-      console.log('启动监控，币种:', selectedCoin);
-      
-      // 启动监控
-      chrome.runtime.sendMessage({action: 'startMonitoring', coin: selectedCoin}).then(response => {
-        console.log('监控启动结果:', response);
-        
-        // 立即获取一次价格作为初始数据
-        fetchPrice();
-        
-        // 显示悬浮图表
-        chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
-          if (tabs[0]) {
-            chrome.tabs.sendMessage(tabs[0].id, {
-              action: 'showFloatingChart'
-            }).catch(() => {
-              // 忽略发送失败的错误
-            });
-          }
-        });
-      }).catch(error => {
-        console.error('启动监控失败:', error);
-        // 如果启动失败，回退到手动模式
-        isMonitoring = false;
+    if (currentMode === 'view') {
+      // 视图模式：开始/停止监听
+      if (isViewModeActive) {
+        console.log('停止视图模式监听');
+        isViewModeActive = false;
         updateMonitoringStatus();
-      });
-    } else {
-      console.log('停止监控');
-      
-      // 停止监控
-      chrome.runtime.sendMessage({action: 'stopMonitoring'}).then(response => {
-        console.log('监控停止结果:', response);
         
-        // 隐藏悬浮图表
-        chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
-          if (tabs[0]) {
-            chrome.tabs.sendMessage(tabs[0].id, {
-              action: 'hideFloatingChart'
-            }).catch(() => {
-              // 忽略发送失败的错误
-            });
-          }
+        // 停止监听
+        chrome.runtime.sendMessage({action: 'stopMonitoring'}).then(response => {
+          console.log('监听停止结果:', response);
+        }).catch(error => {
+          console.error('停止监听失败:', error);
+          // 如果停止失败，恢复状态
+          isViewModeActive = true;
+          updateMonitoringStatus();
         });
-      }).catch(error => {
-        console.error('停止监控失败:', error);
-      });
+      } else {
+        console.log('启动视图模式监听');
+        isViewModeActive = true;
+        updateMonitoringStatus();
+        
+        // 开始监听
+        chrome.runtime.sendMessage({action: 'startMonitoring'}).then(response => {
+          console.log('监听启动结果:', response);
+        }).catch(error => {
+          console.error('启动监听失败:', error);
+          // 如果启动失败，恢复状态
+          isViewModeActive = false;
+          updateMonitoringStatus();
+        });
+      }
+    } else {
+      // 数据模式：开始/停止监控
+      isMonitoring = !isMonitoring;
+      updateMonitoringStatus();
+      
+      if (isMonitoring) {
+        console.log('启动监控，币种:', selectedCoin);
+        
+        // 启动监控
+        chrome.runtime.sendMessage({action: 'startMonitoring', coin: selectedCoin}).then(response => {
+          console.log('监控启动结果:', response);
+          
+          // 立即获取一次价格作为初始数据
+          fetchPrice();
+          
+          // 显示悬浮图表
+          chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
+            if (tabs[0]) {
+              chrome.tabs.sendMessage(tabs[0].id, {
+                action: 'showFloatingChart'
+              }).catch(() => {
+                // 忽略发送失败的错误
+              });
+            }
+          });
+        }).catch(error => {
+          console.error('启动监控失败:', error);
+          // 如果启动失败，回退到手动模式
+          isMonitoring = false;
+          updateMonitoringStatus();
+        });
+      } else {
+        console.log('停止监控');
+        
+        // 停止监控
+        chrome.runtime.sendMessage({action: 'stopMonitoring'}).then(response => {
+          console.log('监控停止结果:', response);
+          
+          // 隐藏悬浮图表
+          chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
+            if (tabs[0]) {
+              chrome.tabs.sendMessage(tabs[0].id, {
+                action: 'hideFloatingChart'
+              }).catch(() => {
+                // 忽略发送失败的错误
+              });
+            }
+          });
+        }).catch(error => {
+          console.error('停止监控失败:', error);
+        });
+      }
     }
   });
   
   // 更新监控状态显示
   function updateMonitoringStatus() {
-    if (isMonitoring) {
+    const modeText = currentMode === 'data' ? '数据模式' : '视图模式';
+    
+    if (currentMode === 'view') {
+      if (isViewModeActive) {
+        toggleBtn.textContent = '停止监听';
+        toggleBtn.disabled = false;
+        toggleBtn.classList.remove('disabled');
+        statusEl.textContent = `监控状态: ${modeText} - 正在监听WebSocket数据`;
+      } else {
+        toggleBtn.textContent = '开始监听';
+        toggleBtn.disabled = false;
+        toggleBtn.classList.remove('disabled');
+        statusEl.textContent = `监控状态: ${modeText} - 监听已停止`;
+      }
+    } else if (isMonitoring) {
       toggleBtn.textContent = '停止监控';
+      toggleBtn.disabled = false;
       toggleBtn.classList.remove('disabled');
-      statusEl.textContent = '监控状态: 运行中';
+      statusEl.textContent = `监控状态: ${modeText} - 正在监控 ${selectedCoin}`;
     } else {
       toggleBtn.textContent = '开始监控';
-      toggleBtn.classList.add('disabled');
-      statusEl.textContent = '监控状态: 已停止';
+      toggleBtn.disabled = false;
+      toggleBtn.classList.remove('disabled');
+      statusEl.textContent = `监控状态: ${modeText} - 未开始`;
     }
   }
   
@@ -725,6 +850,8 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // 更新监控状态
         isMonitoring = !!response.data.monitoringInterval;
+        isViewModeActive = !!response.data.isViewModeActive;
+        currentMode = response.data.currentMode || 'data';
         updateMonitoringStatus();
         
         // 如果有最新价格，立即更新显示
